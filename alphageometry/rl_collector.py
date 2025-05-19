@@ -23,20 +23,12 @@ class RLDataCollector:
         self.problem_counters = {}
         
     def add_search_result(self, 
-                           problem_id: str,
-                           problem_text: str, 
-                           successful_paths: List[Tuple[str, float]], 
-                           failed_paths: List[Tuple[str, float]],
-                           limit_per_problem: int = 200):
-        """添加一次搜索的结果作为训练样本
-        
-        Args:
-            problem_id: 问题标识符
-            problem_text: 原始问题文本
-            successful_paths: 成功证明的路径及其分数 [(path, score),...]
-            failed_paths: 未能证明的路径及其分数 [(path, score),...]
-            limit_per_problem: 每个问题最多生成的样本数
-        """
+                     problem_id: str,
+                     problem_text: str, 
+                     successful_paths: List[Tuple[str, float]], 
+                     failed_paths: List[Tuple[str, float]],
+                     limit_per_problem: int = 200):
+        """添加一次搜索的结果作为训练样本"""
         # 初始化或更新问题计数器
         if problem_id not in self.problem_counters:
             self.problem_counters[problem_id] = 0
@@ -45,7 +37,62 @@ class RLDataCollector:
         if self.problem_counters[problem_id] >= limit_per_problem:
             return
             
-        # 防止样本过多，限制成功和失败路径数量
+        print(f"添加搜索结果: {len(successful_paths)}个成功路径, {len(failed_paths)}个失败路径")
+        print(successful_paths)
+        # 处理特殊情况：仅有成功路径或仅有失败路径
+        if successful_paths and not failed_paths:
+            # 只有成功路径情况 - 创建"自我对比"样本
+            success_limit = min(5, len(successful_paths))
+            paths = sorted(successful_paths, key=lambda x: x[1], reverse=True)[:success_limit]
+            
+            for i, (path1, score1) in enumerate(paths):
+                for j, (path2, score2) in enumerate(paths):
+                    if i != j and score1 > score2:  # 确保比较不同路径，且更高分的为chosen
+                        if self.problem_counters[problem_id] >= limit_per_problem:
+                            break
+                        
+                        example = {
+                            "problem_id": problem_id,
+                            "prompt": problem_text,
+                            "chosen": path1,
+                            "chosen_score": float(score1),
+                            "rejected": path2,
+                            "rejected_score": float(score2)
+                        }
+                        self.examples.append(example)
+                        self.problem_counters[problem_id] += 1
+            
+            print(f"仅使用成功路径生成了{self.problem_counters[problem_id]}个样本")
+            return
+            
+        if failed_paths and not successful_paths:
+            # 只有失败路径情况 - 记录最高得分的失败路径
+            fail_limit = min(10, len(failed_paths))
+            best_failures = sorted(failed_paths, key=lambda x: x[1], reverse=True)[:fail_limit]
+            
+            for i, (path1, score1) in enumerate(best_failures):
+                
+                
+                for j, (path2, score2) in enumerate(best_failures):
+                    if i != j and score1 > score2:  # 分数高的可能更接近正确解
+                        if self.problem_counters[problem_id] >= limit_per_problem:
+                            break
+                        
+                        example = {
+                            "problem_id": problem_id,
+                            "prompt": problem_text,
+                            "chosen": path1,
+                            "chosen_score": float(score1),
+                            "rejected": path2,
+                            "rejected_score": float(score2)
+                        }
+                        self.examples.append(example)
+                        self.problem_counters[problem_id] += 1
+            
+            print(f"仅使用失败路径生成了{self.problem_counters[problem_id]}个样本")
+            return
+        
+        # 原有逻辑：成功和失败路径都存在的情况
         success_limit = min(5, len(successful_paths))
         fail_limit = min(150, len(failed_paths))
         
@@ -70,20 +117,21 @@ class RLDataCollector:
                 }
                 self.examples.append(example)
                 self.problem_counters[problem_id] += 1
+        
+        print(f"成功生成{self.problem_counters[problem_id]}个样本")
     
     def save(self, filename: str = None):
-        """将收集的数据保存到文件
-        
-        Args:
-            filename: 输出文件名，默认为rl_data_{样本数}.jsonl
-        """
+        """将收集的数据保存到文件"""
+        if not self.examples:
+            print("警告：没有收集到任何样本，跳过保存")
+            return
+            
         if filename is None:
             filename = f"rl_data_{len(self.examples)}.jsonl"
             
         filepath = os.path.join(self.output_dir, filename)
         with open(filepath, 'w') as f:
             for example in self.examples:
-                f.write(json.dumps(example) + '\n')
+                f.write(json.dumps(example, ensure_ascii=False) + "\n")
         
         print(f"保存了 {len(self.examples)} 条强化学习训练样本到 {filepath}")
-        return filepath

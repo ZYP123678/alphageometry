@@ -41,9 +41,9 @@ echo ERRFILE=$ERRFILE
 # Memory usage is affected by BATCH_SIZE, NWORKER and complexity of the problem.
 # Larger NWORKER and BATCH_SIZE tends to cause out of memory issue
 
-BATCH_SIZE=8
+BATCH_SIZE=32
 BEAM_SIZE=32
-DEPTH=8
+DEPTH=16
 NWORKERS=1
 
 #The results in Google's paper can be obtained by setting BATCH_SIZE=32, BEAM_SIZE=512, DEPTH=16
@@ -51,6 +51,10 @@ NWORKERS=1
 DATA=$AGLIB/ag_ckpt_vocab
 MELIAD_PATH=$AGLIB/meliad
 export PYTHONPATH=$PYTHONPATH:$MELIAD_PATH
+
+COLLECT_RL_DATA=true  # 设置为false禁用RL数据收集
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+RL_DATA_DIR=$TESTDIR/rl_data_${TIMESTAMP}
 
 DDAR_ARGS=(
   --defs_file=$AGDIR/defs.txt \
@@ -60,6 +64,11 @@ DDAR_ARGS=(
 SEARCH_ARGS=(
   --beam_size=$BEAM_SIZE
   --search_depth=$DEPTH
+)
+
+RL_ARGS=(
+  --collect_rl_data=$COLLECT_RL_DATA
+  --rl_data_dir=$RL_DATA_DIR
 )
 
 LM_ARGS=(
@@ -78,7 +87,17 @@ LM_ARGS=(
   --gin_param=Trainer.restore_state_variables=False
 );
 
+if [ "$COLLECT_RL_DATA" = "false" ]; then
+  RL_ARGS=()
+  echo "RL数据收集已禁用"
+else
+  # 确保RL数据目录存在
+  mkdir -p $RL_DATA_DIR
+  echo "RL数据将保存到: $RL_DATA_DIR"
+fi
+
 true "=========================================="
+
 
 python -m alphageometry \
 --alsologtostderr \
@@ -87,6 +106,21 @@ python -m alphageometry \
 --mode=$MODEL \
 "${DDAR_ARGS[@]}" \
 "${SEARCH_ARGS[@]}" \
+"${RL_ARGS[@]}" \
 "${LM_ARGS[@]}" \
 --out_file=$OUTFILE \
 --n_workers=$NWORKERS 2>&1
+
+
+# 如果启用了RL数据收集，显示收集结果
+if [ "$COLLECT_RL_DATA" = "true" ]; then
+  echo "=========================================="
+  echo "RL数据收集完成，保存路径: $RL_DATA_DIR"
+  if [ -d "$RL_DATA_DIR" ]; then
+    ls -l $RL_DATA_DIR
+    COUNT=$(cat $RL_DATA_DIR/*.jsonl 2>/dev/null | wc -l || echo "0")
+    echo "共收集了 $COUNT 条样本"
+  else
+    echo "警告: RL数据目录未创建"
+  fi
+fi

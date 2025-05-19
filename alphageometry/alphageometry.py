@@ -17,10 +17,10 @@
 
 Please refer to README.md for detailed instructions.
 """
-
+import os
 import time
 import traceback
-
+import re
 from absl import app
 from absl import flags
 from absl import logging
@@ -30,12 +30,11 @@ import lm_inference as lm
 import pretty as pt
 import problem as pr
 from rl_collector import RLDataCollector
+import sys
 
-#=============
-import sys, os, math, re
 import multiprocessing
-model = None # global variable used in multi-processing workers
-
+model = None # global variable used in multi-processing workers n'nnn
+rl_collector = None
 _COLLECT_RL_DATA = flags.DEFINE_bool(
     'collect_rl_data', False, 'Whether to collect data for reinforcement learning.'
 )
@@ -770,14 +769,14 @@ def run_alphageometry(
     beam_queue = new_queue
 
   # Clean up resources
-    failed_paths = []
-    for paths in depth_paths.values():
-        failed_paths.extend(paths)
+  failed_paths = []
+  for paths in depth_paths.values():
+      failed_paths.extend(paths)
         
-    if _COLLECT_RL_DATA.value and rl_collector and failed_paths:
-        rl_collector.add_search_result(
-            p.url, p.txt(), [], failed_paths
-        )
+  if _COLLECT_RL_DATA.value and rl_collector and failed_paths:
+      rl_collector.add_search_result(
+          p.url, p.txt(), [], failed_paths
+      )
         
   if pool:
     pool.terminate()
