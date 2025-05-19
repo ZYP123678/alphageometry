@@ -1,0 +1,118 @@
+++ echo PROB=gaolian100-26-hint
+PROB=gaolian100-26-hint
+++ echo PROB_FILE=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt
+PROB_FILE=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt
+++ echo MODEL=ddar
+MODEL=ddar
+++ echo OUTFILE=/home/peng/ag4mtest/gaolian100-26-hint.out
+OUTFILE=/home/peng/ag4mtest/gaolian100-26-hint.out
+++ echo ERRFILE=/home/peng/ag4mtest/gaolian100-26-hint.log
+ERRFILE=/home/peng/ag4mtest/gaolian100-26-hint.log
+++ BATCH_SIZE=8
+++ BEAM_SIZE=32
+++ DEPTH=8
+++ NWORKERS=1
+++ DATA=/home/peng/aglib/ag_ckpt_vocab
+++ MELIAD_PATH=/home/peng/aglib/meliad
+++ export PYTHONPATH=:/home/peng/ag4masses/alphageometry:/home/peng/aglib:/home/peng/aglib/meliad
+++ PYTHONPATH=:/home/peng/ag4masses/alphageometry:/home/peng/aglib:/home/peng/aglib/meliad
+++ DDAR_ARGS=(--defs_file=$AGDIR/defs.txt --rules_file=$AGDIR/rules.txt)
+++ SEARCH_ARGS=(--beam_size=$BEAM_SIZE --search_depth=$DEPTH)
+++ LM_ARGS=(--ckpt_path=$DATA --vocab_path=$DATA/geometry.757.model --gin_search_paths=$MELIAD_PATH/transformer/configs,$AGDIR --gin_file=base_htrans.gin --gin_file=size/medium_150M.gin --gin_file=options/positions_t5.gin --gin_file=options/lr_cosine_decay.gin --gin_file=options/seq_1024_nocache.gin --gin_file=geometry_150M_generate.gin --gin_param=DecoderOnlyLanguageModelGenerate.output_token_losses=True --gin_param=TransformerTaskConfig.batch_size=$BATCH_SIZE --gin_param=TransformerTaskConfig.sequence_length=128 --gin_param=Trainer.restore_state_variables=False)
+++ true ==========================================
+++ python -m alphageometry --alsologtostderr --problems_file=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt --problem_name=gaolian100-26-hint --mode=ddar --defs_file=/home/peng/ag4masses/alphageometry/defs.txt --rules_file=/home/peng/ag4masses/alphageometry/rules.txt --beam_size=32 --search_depth=8 --ckpt_path=/home/peng/aglib/ag_ckpt_vocab --vocab_path=/home/peng/aglib/ag_ckpt_vocab/geometry.757.model --gin_search_paths=/home/peng/aglib/meliad/transformer/configs,/home/peng/ag4masses/alphageometry --gin_file=base_htrans.gin --gin_file=size/medium_150M.gin --gin_file=options/positions_t5.gin --gin_file=options/lr_cosine_decay.gin --gin_file=options/seq_1024_nocache.gin --gin_file=geometry_150M_generate.gin --gin_param=DecoderOnlyLanguageModelGenerate.output_token_losses=True --gin_param=TransformerTaskConfig.batch_size=8 --gin_param=TransformerTaskConfig.sequence_length=128 --gin_param=Trainer.restore_state_variables=False --out_file=/home/peng/ag4mtest/gaolian100-26-hint.out --n_workers=1
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+2025-01-04 22:08:24.806615: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+I0104 22:08:27.421147 140512778821632 graph.py:498] gaolian100-26-hint
+I0104 22:08:27.421442 140512778821632 graph.py:499] a b c = triangle a b c; d = angle_bisector d b a c, on_circum d a b c; e = circumcenter e a b c; f = on_line f a b, on_pline f e b d; g = on_line g a c, on_pline g e c d; h = orthocenter h a b c; i = on_line i b c, on_pline i h a d; j = on_line e c, eqdistance j e e c ? cong f b f i
+I0104 22:08:28.219682 140512778821632 ddar.py:60] Depth 1/1000 time = 0.713336706161499
+I0104 22:08:29.873232 140512778821632 ddar.py:60] Depth 2/1000 time = 1.6532783508300781
+I0104 22:08:32.059960 140512778821632 ddar.py:60] Depth 3/1000 time = 2.18648624420166
+I0104 22:08:34.823741 140512778821632 ddar.py:60] Depth 4/1000 time = 2.763469696044922
+I0104 22:08:34.864455 140512778821632 alphageometry.py:201] 
+==========================
+ * From theorem premises:
+A B C D E F H I : Points
+B,C,D,A are concyclic [00]
+∠BAD = ∠DAC [01]
+EB = EC [02]
+EA = EB [03]
+FE ∥ BD [04]
+B,F,A are collinear [05]
+BH ⟂ AC [06]
+AH ⟂ BC [07]
+IH ∥ AD [08]
+B,C,I are collinear [09]
+
+ * Auxiliary Constructions:
+G J : Points
+G,C,A are collinear [10]
+JE = EC [11]
+E,C,J are collinear [12]
+
+ * Proof steps:
+001. EB = EC [02] & JE = EC [11] & EA = EB [03] ⇒  B,A,C,J are concyclic [13]
+002. EB = EC [02] & JE = EC [11] & EA = EB [03] ⇒  E is the circumcenter of \Delta JAC [14]
+003. EB = EC [02] & JE = EC [11] & EA = EB [03] ⇒  EJ = EA [15]
+004. B,A,C,J are concyclic [13] & B,C,D,A are concyclic [00] ⇒  D,J,A,C are concyclic [16]
+005. B,A,C,J are concyclic [13] & B,C,D,A are concyclic [00] ⇒  D,J,B,C are concyclic [17]
+006. B,A,C,J are concyclic [13] & B,C,D,A are concyclic [00] ⇒  D,J,A,B are concyclic [18]
+007. D,J,A,C are concyclic [16] ⇒  ∠DJC = ∠DAC [19]
+008. D,J,A,C are concyclic [16] ⇒  ∠DAJ = ∠DCJ [20]
+009. B,C,D,A are concyclic [00] ⇒  ∠BAD = ∠BCD [21]
+010. B,C,D,A are concyclic [00] ⇒  ∠ADB = ∠ACB [22]
+011. B,C,D,A are concyclic [00] ⇒  ∠DAC = ∠DBC [23]
+012. ∠DJC = ∠DAC [19] & E,C,J are collinear [12] & ∠BAD = ∠DAC [01] & ∠BAD = ∠BCD [21] ⇒  ∠BCD = ∠(DJ-EC) [24]
+013. E is the circumcenter of \Delta JAC [14] & E,C,J are collinear [12] ⇒  AC ⟂ JA [25]
+014. ∠DAJ = ∠DCJ [20] & E,C,J are collinear [12] & AC ⟂ JA [25] & BH ⟂ AC [06] ⇒  ∠(EC-BH) = ∠CDA [26]
+015. ∠BCD = ∠(DJ-EC) [24] & ∠(EC-BH) = ∠CDA [26] ⇒  ∠(DJ-BC) = ∠(BH-AD) [27]
+016. D,J,B,C are concyclic [17] ⇒  ∠DJC = ∠DBC [28]
+017. ∠DJC = ∠DBC [28] & E,C,J are collinear [12] & BD ∥ EF [04] ⇒  ∠(DJ-EC) = ∠(EF-BC) [29]
+018. EB = EC [02] ⇒  ∠EBC = ∠BCE [30]
+019. ∠(DJ-EC) = ∠(EF-BC) [29] & ∠EBC = ∠BCE [30] ⇒  ∠(DJ-BC) = ∠FEB [31]
+020. ∠(DJ-BC) = ∠(BH-AD) [27] & AC ⟂ JA [25] & BH ⟂ AC [06] & ∠(DJ-BC) = ∠FEB [31] & EF ∥ BD [04] & AD ∥ HI [08] ⇒  ∠BEF = ∠IHB [32]
+021. G,C,A are collinear [10] & B,F,A are collinear [05] & ∠DAC = ∠BAD [01] ⇒  ∠(DA-GC) = ∠(BF-DA) [33]
+022. G,C,A are collinear [10] & ∠ACB = ∠ADB [22] & BD ∥ EF [04] ⇒  ∠GCB = ∠(DA-EF) [34]
+023. ∠(DA-GC) = ∠(BF-DA) [33] & ∠GCB = ∠(DA-EF) [34] ⇒  ∠(DA-BC) = ∠BFE [35]
+024. B,F,A are collinear [05] & B,C,I are collinear [09] & ∠(DA-BC) = ∠BFE [35] & EF ∥ BD [04] & AD ∥ HI [08] ⇒  ∠BFE = ∠HIB [36]
+025. ∠BEF = ∠IHB [32] & ∠BFE = ∠HIB [36] (Similar Triangles)⇒  BE:BH = BF:BI [37]
+026. D,J,A,B are concyclic [18] ⇒  ∠BJD = ∠BAD [38]
+027. ∠BJD = ∠BAD [38] & ∠BAD = ∠DAC [01] & ∠DAC = ∠DBC [23] & BD ∥ EF [04] ⇒  ∠(EF-BC) = ∠BJD [39]
+028. ∠DJC = ∠DBC [28] & E,C,J are collinear [12] & ∠CBE = ∠ECB [30] & BD ∥ EF [04] ⇒  ∠CBE = ∠(DJ-EF) [40]
+029. ∠(EF-BC) = ∠BJD [39] & ∠CBE = ∠(DJ-EF) [40] ⇒  ∠FEB = ∠(BJ-EF) [41]
+030. B,C,D,A are concyclic [00] & ∠BAD = ∠DAC [01] ⇒  DB = CD [42]
+031. EB = EC [02] & DB = CD [42] ⇒  BC ⟂ ED [43]
+032. EB = EC [02] & JE = EC [11] ⇒  E is the circumcenter of \Delta JBC [44]
+033. E is the circumcenter of \Delta JBC [44] & E,C,J are collinear [12] ⇒  BC ⟂ JB [45]
+034. ∠FEB = ∠(BJ-EF) [41] & EF ∥ BD [04] & BC ⟂ ED [43] & BJ ⟂ BC [45] ⇒  ∠EBD = ∠BDE [46]
+035. ∠EBD = ∠BDE [46] ⇒  EB = ED [47]
+036. AC ⟂ JA [25] & BH ⟂ AC [06] & BC ⟂ JB [45] & AH ⟂ BC [07] ⇒  ∠BHA = ∠AJB [48]
+037. BC ⟂ JB [45] & AH ⟂ BC [07] ⇒  ∠BAH = ∠ABJ [49]
+038. ∠BHA = ∠AJB [48] & ∠BAH = ∠ABJ [49] (Similar Triangles)⇒  BH = AJ [50]
+039. G,C,A are collinear [10] & ∠DJC = ∠DAC [19] & E,C,J are collinear [12] ⇒  ∠ECG = ∠JDA [51]
+040. ∠(DA-GC) = ∠(BF-DA) [33] & ∠ECG = ∠JDA [51] ⇒  ∠(DA-EC) = ∠(BF-DJ) [52]
+041. E,C,J are collinear [12] & ∠(DA-EC) = ∠(BF-DJ) [52] & B,F,A are collinear [05] & ∠BJD = ∠BAD [38] & BC ⟂ ED [43] & BJ ⟂ BC [45] ⇒  ∠EDJ = ∠DJE [53]
+042. ∠EDJ = ∠DJE [53] ⇒  ED = EJ [54]
+043. BE:BH = BF:BI [37] & EB = ED [47] & BH = AJ [50] & ED = EJ [54] & JE = EC [11] & EB = EC [02] & EA = EB [03] ⇒  AE:AJ = BF:BI [55]
+044. EJ = EA [15] ⇒  ∠EJA = ∠JAE [56]
+045. ∠EJA = ∠JAE [56] & E,C,J are collinear [12] & AC ⟂ JA [25] & BH ⟂ AC [06] ⇒  ∠(BH-EA) = ∠(EC-BH) [57]
+046. B,J,C,A are concyclic [13] ⇒  ∠JAB = ∠JCB [58]
+047. B,F,A are collinear [05] & ∠JAB = ∠JCB [58] & E,C,J are collinear [12] & AC ⟂ JA [25] & BH ⟂ AC [06] ⇒  ∠FBH = ∠BCE [59]
+048. ∠(BH-EA) = ∠(EC-BH) [57] & ∠FBH = ∠BCE [59] ⇒  ∠HBC = ∠(EA-BF) [60]
+049. B,F,A are collinear [05] & B,C,I are collinear [09] & ∠HBC = ∠(EA-BF) [60] & AC ⟂ JA [25] & BH ⟂ AC [06] ⇒  ∠EAJ = ∠FBI [61]
+050. AE:AJ = BF:BI [55] & ∠EAJ = ∠FBI [61] (Similar Triangles)⇒  EA:EJ = FB:FI [62]
+051. EA:EJ = FB:FI [62] & EJ = EA [15] ⇒  FB = FI
+==========================
+
+I0104 22:08:34.865483 140512778821632 alphageometry.py:205] Solution written to /home/peng/ag4mtest/gaolian100-26-hint.out.

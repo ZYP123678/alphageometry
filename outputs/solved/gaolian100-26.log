@@ -1,0 +1,34 @@
+++ echo PROB=gaolian100-26
+PROB=gaolian100-26
+++ echo PROB_FILE=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt
+PROB_FILE=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt
+++ echo MODEL=ddar
+MODEL=ddar
+++ echo OUTFILE=/home/peng/ag4mtest/gaolian100-26.out
+OUTFILE=/home/peng/ag4mtest/gaolian100-26.out
+++ echo ERRFILE=/home/peng/ag4mtest/gaolian100-26.log
+ERRFILE=/home/peng/ag4mtest/gaolian100-26.log
+++ BATCH_SIZE=8
+++ BEAM_SIZE=32
+++ DEPTH=8
+++ NWORKERS=1
+++ DATA=/home/peng/aglib/ag_ckpt_vocab
+++ MELIAD_PATH=/home/peng/aglib/meliad
+++ export PYTHONPATH=:/home/peng/ag4masses/alphageometry:/home/peng/aglib:/home/peng/aglib/meliad
+++ PYTHONPATH=:/home/peng/ag4masses/alphageometry:/home/peng/aglib:/home/peng/aglib/meliad
+++ DDAR_ARGS=(--defs_file=$AGDIR/defs.txt --rules_file=$AGDIR/rules.txt)
+++ SEARCH_ARGS=(--beam_size=$BEAM_SIZE --search_depth=$DEPTH)
+++ LM_ARGS=(--ckpt_path=$DATA --vocab_path=$DATA/geometry.757.model --gin_search_paths=$MELIAD_PATH/transformer/configs,$AGDIR --gin_file=base_htrans.gin --gin_file=size/medium_150M.gin --gin_file=options/positions_t5.gin --gin_file=options/lr_cosine_decay.gin --gin_file=options/seq_1024_nocache.gin --gin_file=geometry_150M_generate.gin --gin_param=DecoderOnlyLanguageModelGenerate.output_token_losses=True --gin_param=TransformerTaskConfig.batch_size=$BATCH_SIZE --gin_param=TransformerTaskConfig.sequence_length=128 --gin_param=Trainer.restore_state_variables=False)
+++ true ==========================================
+++ python -m alphageometry --alsologtostderr --problems_file=/home/peng/dreammie_e/vs/Colab/GoogleDrive-Colab-Files/ColabExamples.txt --problem_name=gaolian100-26 --mode=ddar --defs_file=/home/peng/ag4masses/alphageometry/defs.txt --rules_file=/home/peng/ag4masses/alphageometry/rules.txt --beam_size=32 --search_depth=8 --ckpt_path=/home/peng/aglib/ag_ckpt_vocab --vocab_path=/home/peng/aglib/ag_ckpt_vocab/geometry.757.model --gin_search_paths=/home/peng/aglib/meliad/transformer/configs,/home/peng/ag4masses/alphageometry --gin_file=base_htrans.gin --gin_file=size/medium_150M.gin --gin_file=options/positions_t5.gin --gin_file=options/lr_cosine_decay.gin --gin_file=options/seq_1024_nocache.gin --gin_file=geometry_150M_generate.gin --gin_param=DecoderOnlyLanguageModelGenerate.output_token_losses=True --gin_param=TransformerTaskConfig.batch_size=8 --gin_param=TransformerTaskConfig.sequence_length=128 --gin_param=Trainer.restore_state_variables=False --out_file=/home/peng/ag4mtest/gaolian100-26.out --n_workers=1
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+2025-01-04 16:58:00.917970: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
+/home/peng/pythovenv/lib/python3.10/site-packages/flax/struct.py:132: FutureWarning: jax.tree_util.register_keypaths is deprecated, and will be removed in a future release. Please use `register_pytree_with_keys()` instead.
+  jax.tree_util.register_keypaths(data_clz, keypaths)
