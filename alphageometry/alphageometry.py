@@ -29,7 +29,7 @@ import graph as gh
 import lm_inference as lm
 import pretty as pt
 import problem as pr
-from rl_collector import RLDataCollector
+from rl_collector import StepwiseRLDataCollector
 import sys
 
 import multiprocessing
@@ -212,12 +212,18 @@ def write_solution(g: gh.Graph, p: pr.Problem, out_file: str) -> None:
     logging.info('Solution written to %s.', out_file)
 
 
-def get_lm(ckpt_init: str, vocab_path: str) -> lm.LanguageModelInference:
-  lm.parse_gin_configuration(
-      _GIN_FILE.value, _GIN_PARAM.value, gin_paths=_GIN_SEARCH_PATHS.value
-  )
+import pickle
 
-  return lm.LanguageModelInference(vocab_path, ckpt_init, mode='beam_search')
+def get_lm(ckpt_init: str, vocab_path: str) -> lm.LanguageModelInference:
+    lm.parse_gin_configuration(
+        _GIN_FILE.value, _GIN_PARAM.value, gin_paths=_GIN_SEARCH_PATHS.value
+    )
+    if ckpt_init.endswith('.pkl'):
+        with open(ckpt_init, 'rb') as f:
+            params = pickle.load(f)
+        return lm.LanguageModelInference(vocab_path, params, mode='beam_search', from_params=True)
+    else:
+        return lm.LanguageModelInference(vocab_path, ckpt_init, mode='beam_search')
 
 
 def run_ddar(g: gh.Graph, p: pr.Problem, out_file: str) -> bool:
@@ -555,11 +561,17 @@ def bqsearch_init(worker_id):
     model = get_lm(_CKPT_PATH.value, _VOCAB_PATH.value)
     return wkrpid
 
-def bqsearch(i_nd, srch_inputs, out_file) -> tuple[int, bool, list]: # ( iNode, solved, [ (node, score) ] )
+def bqsearch(i_nd, srch_inputs, out_file) -> tuple[int, bool, list]: # ( iNode, solved, [ (node, score, step_records) ] )
     pid = os.getpid()
     logging.info(f'Worker PID={pid} called for beam search node {i_nd}')
 
-    prev_score, (g, string, pstring) = srch_inputs
+    # 修改节点结构，支持step_records
+    if len(srch_inputs) == 2:
+        prev_score, (g, string, pstring) = srch_inputs
+        step_records = []
+    else:
+        prev_score, (g, string, pstring, step_records) = srch_inputs
+
     logging.info(f'Worker PID={pid}: Beam-searching and Decoding from {string}')
     outputs = model.beam_decode(string, eos_tokens=[';'])
 
@@ -596,26 +608,20 @@ def bqsearch(i_nd, srch_inputs, out_file) -> tuple[int, bool, list]: # ( iNode, 
       # This is the new proof state graph representation:
       g_new, _ = gh.Graph.build_problem(p_new, DEFINITIONS)
 
+      # 新增分步记录
+      new_step_records = step_records + [(string, lm_out)]
+
       try:
         if run_ddar(g_new, p_new, out_file):
           logging.info(f'Worker PID={pid}: Solved.')
-          return (i_nd, True, None)
+          return (i_nd, True, new_step_records)  # 返回分步记录
       except Exception as e:
           logging.info(f'Worker PID={pid}: Error in run_ddar: {e}')
 
-      # Add the candidate to the beam queue.
-      ret.append( [
-          # The string for the new node is old_string + lm output +
-          # the special token asking for a new auxiliary point ' x00':
-          # node
-          (g_new, string + ' ' + lm_out + ' x00', candidate_pstring),
-          # the score of each node is sum of score of all nodes
-          # on the path to itself. For beam search, there is no need to
-          # normalize according to path length because all nodes in beam
-          # is of the same path length.
-          # val
-          prev_score + score ]
-      )
+      ret.append([
+          (g_new, string + ' ' + lm_out + ' x00', candidate_pstring, new_step_records),
+          prev_score + score
+      ])
 
     logging.info(f'Worker PID={pid} beam search node {i_nd}: returning')
     return (i_nd, False, ret)
@@ -679,8 +685,9 @@ def run_alphageometry(
   #  <original problem string>)
   beam_queue = BeamQueue(max_size=beam_size)
   # originally the beam search tree starts with a single node (a 3-tuple):
+  initial_step_records = []
   beam_queue.add(
-      node=(g, string, p.txt()), val=0.0  # value of the root node is simply 0.
+      node=(g, string, p.txt(), initial_step_records), val=0.0  # value of the root node is simply 0.
   )
 
   pool = None
@@ -699,24 +706,17 @@ def run_alphageometry(
     logging.info(
         'Depth %s. There are %i nodes to expand:', depth, len(beam_queue)
     )
-    for _, (_, string, _) in beam_queue:
+    for _, (_, string, _, _) in beam_queue:
       logging.info(string)
 
     new_queue = BeamQueue(max_size=beam_size)  # to replace beam_queue.
     if _N_WORKSERS.value==1:
       for i, srch_inputs in enumerate(beam_queue):
-        prev_score, (g, string, pstring) = srch_inputs
-        _, solved, res = bqsearch(i, srch_inputs, out_file)
+        prev_score, (g, string, pstring, step_records) = srch_inputs
+        i_nd, solved, res = bqsearch(i, (prev_score, (g, string, pstring, step_records)), out_file)
         if solved:
-          successful_paths.append((string, prev_score))
-          if _COLLECT_RL_DATA.value and rl_collector:
-                        # 只使用当前深度之前的路径作为失败路径
-                        failed_paths = []
-                        for d in range(depth):
-                            failed_paths.extend(depth_paths.get(d, []))
-                        rl_collector.add_search_result(
-                            p.url, p.txt(), successful_paths, failed_paths
-                        )
+          # 收集成功路径
+          rl_collector.add_path(p.url, True, res)
           return True
         if depth not in depth_paths:
           depth_paths[depth] = []
@@ -737,28 +737,17 @@ def run_alphageometry(
           if jobres and jobres.ready():            
             n_done += 1
             jobs[i] = None
-            prev_score, (g, string, pstring) = job_inputs[i]
+            prev_score, (g, string, pstring, step_records) = job_inputs[i]
             
             _, solved, res = jobres.get()
             if solved:              
-              successful_paths.append((string, prev_score))
-              if _COLLECT_RL_DATA.value and rl_collector:
-                failed_paths = []
-                for d in range(depth):
-                  failed_paths.extend(depth_paths.get(d, []))
-                        
-                rl_collector.add_search_result(
-                    p.url, p.txt(), successful_paths, failed_paths
-                )
-              # Clean up resources
-              pool.terminate()
-              pool.join()
-
+              # 收集成功路径
+              rl_collector.add_path(p.url, True, res)
               return True
             if depth not in depth_paths:
                 depth_paths[depth] = []
             for node, val in res:
-              depth_paths[depth].append((node[1], val))
+              depth_paths[depth].append((node, val))
               # Add the candidate to the beam queue.
               new_queue.add(node, val)
               # Note that the queue only maintain at most beam_size nodes
@@ -768,19 +757,16 @@ def run_alphageometry(
     # replace the old queue with new queue before the new proof search depth.
     beam_queue = new_queue
 
-  # Clean up resources
-  failed_paths = []
+  # 失败路径收集（可选）
   for paths in depth_paths.values():
-      failed_paths.extend(paths)
-        
-  if _COLLECT_RL_DATA.value and rl_collector and failed_paths:
-      rl_collector.add_search_result(
-          p.url, p.txt(), [], failed_paths
-      )
-        
-  if pool:
-    pool.terminate()
-    pool.join()
+      for (node, val) in paths:
+          if len(node) == 4:
+              _, _, _, step_records = node
+              rl_collector.add_path(p.url, False, step_records)
+
+  # 搜索全部结束后生成DPO样本
+  rl_collector.build_dpo_examples()
+  rl_collector.save()
   return False
 
 def main(_):
@@ -814,7 +800,7 @@ def main(_):
   
   rl_collector = None
   if _COLLECT_RL_DATA.value:
-    rl_collector = RLDataCollector(_RL_DATA_DIR.value)
+    rl_collector = StepwiseRLDataCollector(_RL_DATA_DIR.value)
 
   if _MODE.value == 'ddar':
     g, _ = gh.Graph.build_problem(this_problem, DEFINITIONS)

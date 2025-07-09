@@ -36,10 +36,95 @@ parse_gin_configuration = inference_utils.parse_gin_configuration
 class LanguageModelInference:
   """Meliad wrapper for LM inference."""
 
-  def __init__(self, vocab_path: str, load_dir: str, mode='beam_search'):
+  def __init__(self, vocab_path: str, load_dir_or_params, mode='beam_search', from_params=False):
     self.vocab = t5.data.SentencePieceVocabulary(vocab_path)
 
-    # This task won't be pulling from a dataset.
+    if from_params:
+      # 先正常初始化
+      def null_iter_fn() -> None:
+        return None
+
+      process_summaries_f = inference_utils.models.process_summaries_function(
+          self.vocab
+      )
+
+      trainer = inference_utils.training_loop.Trainer(
+          get_training_dataset_iterator=null_iter_fn,
+          get_test_dataset_iterator=None,
+          pretty_print_input_function=None,
+          process_summaries_function=process_summaries_f,
+          load_dir=None,  # 不加载原始checkpoint
+          workdir='',
+          replicate_mode=False,
+      )
+      self.trainer = trainer
+
+      (tstate, _, imodel, prngs) = trainer.initialize_model()
+      self.imodel = imodel
+      self.batch_size = imodel.task_config.batch_size
+      self.n = imodel.num_heads
+      self.h = imodel.head_size
+      writers = {}
+      self.task = trainer.create_training_task(mode, imodel, prngs, writers)
+      inference_utils.training_loop.clear_interstep_callbacks()
+      inference_utils.training_loop.register_interstep_callbacks()
+            # 临时补齐 embedding 以适配目标 shape
+            # 临时补齐 embedding 以适配目标 shape
+      def pad_embedding(embedding, target_shape):
+          import numpy as np
+          if hasattr(embedding, "shape"):
+              emb_shape = embedding.shape
+          else:
+              emb_shape = np.array(embedding).shape
+          if emb_shape == target_shape:
+              return embedding
+          elif emb_shape[0] < target_shape[0]:
+              pad_width = ((0, target_shape[0] - emb_shape[0]), (0, 0))
+              return np.pad(embedding, pad_width, mode='constant')
+          else:
+              return embedding[:target_shape[0], :]
+
+      # 递归将 FrozenDict 转为普通 dict
+      def recursive_to_dict(d):
+          if hasattr(d, "items"):
+              return {k: recursive_to_dict(v) for k, v in d.items()}
+          else:
+              return d
+
+      # 递归将 dict 转为 FrozenDict
+      from flax.core import FrozenDict
+      def recursive_to_frozendict(d):
+          if isinstance(d, dict):
+              return FrozenDict({k: recursive_to_frozendict(v) for k, v in d.items()})
+          else:
+              return d
+
+      # 转成可变 dict
+      params_dict = recursive_to_dict(load_dir_or_params)
+
+      if hasattr(tstate, "params"):
+          target_shape = tstate.params['decoder']['embed']['embedding'].shape
+          params_dict['decoder']['embed']['embedding'] = pad_embedding(
+              params_dict['decoder']['embed']['embedding'], target_shape)
+          tstate = tstate.replace(params=recursive_to_frozendict(params_dict))
+      elif hasattr(tstate, "optimizer") and hasattr(tstate.optimizer, "target"):
+          target_shape = tstate.optimizer.target['decoder']['embed']['embedding'].shape
+          params_dict['decoder']['embed']['embedding'] = pad_embedding(
+              params_dict['decoder']['embed']['embedding'], target_shape)
+          optimizer = tstate.optimizer.replace(target=recursive_to_frozendict(params_dict))
+          tstate = tstate.replace(optimizer=optimizer)
+      else:
+          raise ValueError(f"无法识别 tstate 的参数结构，字段有：{dir(tstate)}")
+      self.tstate = tstate
+
+      eos = [0] * 1024
+      for idx in self.encode_list(['.', ';']):
+        eos[idx] = 1
+      self.eos = np.array(eos, dtype=np.bfloat16)
+      self.mask = jax.numpy.ones([1024], dtype=np.bfloat16)
+      return
+
+    # ====== 原有的 checkpoint 路径加载逻辑 ======
     def null_iter_fn() -> None:
       return None
 
@@ -52,35 +137,26 @@ class LanguageModelInference:
         get_test_dataset_iterator=None,
         pretty_print_input_function=None,
         process_summaries_function=process_summaries_f,
-        load_dir=load_dir,
+        load_dir=load_dir_or_params,
         workdir='',  # Don't log or save checkpoints.
         replicate_mode=False,
-    )  # Run on a single device at batch size 1.
+    )
     self.trainer = trainer
 
-    # Create and initialize the model.
     (tstate, _, imodel, prngs) = trainer.initialize_model()
     self.imodel = imodel
     self.batch_size = imodel.task_config.batch_size
-
     self.n = imodel.num_heads
     self.h = imodel.head_size
-
-    # Create an inference task.
     writers = {}
-    self.task = trainer.create_training_task(mode, imodel, prngs, writers)  # pylint: disable=too-many-function-args
-
-    # Register any additional actions.
-    # Actions are cleared first for use with colab.
+    self.task = trainer.create_training_task(mode, imodel, prngs, writers)
     inference_utils.training_loop.clear_interstep_callbacks()
     inference_utils.training_loop.register_interstep_callbacks()
     self.tstate = tstate
 
-    # some default parameters.
     eos = [0] * 1024
     for idx in self.encode_list(['.', ';']):
       eos[idx] = 1
-
     self.eos = np.array(eos, dtype=np.bfloat16)
     self.mask = jax.numpy.ones([1024], dtype=np.bfloat16)
 
