@@ -565,12 +565,7 @@ def bqsearch(i_nd, srch_inputs, out_file) -> tuple[int, bool, list]: # ( iNode, 
     pid = os.getpid()
     logging.info(f'Worker PID={pid} called for beam search node {i_nd}')
 
-    # 修改节点结构，支持step_records
-    if len(srch_inputs) == 2:
-        prev_score, (g, string, pstring) = srch_inputs
-        step_records = []
-    else:
-        prev_score, (g, string, pstring, step_records) = srch_inputs
+    prev_score, (g, string, pstring, step_records) = srch_inputs
 
     logging.info(f'Worker PID={pid}: Beam-searching and Decoding from {string}')
     outputs = model.beam_decode(string, eos_tokens=[';'])
