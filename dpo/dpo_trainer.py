@@ -474,8 +474,8 @@ class DPOTrainer:
     def _dpo_loss(self, params: Dict[str, Any], chosen_data: Tuple[jnp.ndarray, jnp.ndarray],
              rejected_data: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
         \"\"\"计算DPO损失 - 使用jax.debug.print进行调试\"\"\"
-        chosen_inputs, chosen_targets = chosen_data
-        rejected_inputs, rejected_targets = rejected_data
+        chosen_inputs, chosen_targets, chosen_loss_mask = chosen_data
+        rejected_inputs, rejected_targets, rejected_loss_mask = rejected_data
     
         # 创建临时训练状态
         temp_tstate = self.tstate.replace(params=params)
@@ -496,24 +496,22 @@ class DPOTrainer:
                 reference_chosen_logps = policy_chosen_logps + jax.random.normal(noise_key1, policy_chosen_logps.shape) * 0.1
                 reference_rejected_logps = policy_rejected_logps + jax.random.normal(noise_key2, policy_rejected_logps.shape) * 0.1
                 
-            # 计算平均对数概率（只考虑有效token）
-            chosen_mask = (chosen_targets > 0).astype(jnp.float32)
-            rejected_mask = (rejected_targets > 0).astype(jnp.float32)
             
+            # 使用传入的掩码计算平均对数概率
             # 当前策略的平均对数概率
-            policy_chosen_sum = jnp.sum(policy_chosen_logps * chosen_mask, axis=-1)
-            policy_chosen_lengths = jnp.sum(chosen_mask, axis=-1) + 1e-8
+            policy_chosen_sum = jnp.sum(policy_chosen_logps * chosen_loss_mask, axis=-1)
+            policy_chosen_lengths = jnp.sum(chosen_loss_mask, axis=-1) + 1e-8
             policy_chosen_mean = policy_chosen_sum / policy_chosen_lengths
             
-            policy_rejected_sum = jnp.sum(policy_rejected_logps * rejected_mask, axis=-1)
-            policy_rejected_lengths = jnp.sum(rejected_mask, axis=-1) + 1e-8
+            policy_rejected_sum = jnp.sum(policy_rejected_logps * rejected_loss_mask, axis=-1)
+            policy_rejected_lengths = jnp.sum(rejected_loss_mask, axis=-1) + 1e-8
             policy_rejected_mean = policy_rejected_sum / policy_rejected_lengths
             
             # 参考策略的平均对数概率
-            ref_chosen_sum = jnp.sum(reference_chosen_logps * chosen_mask, axis=-1)
+            ref_chosen_sum = jnp.sum(reference_chosen_logps * chosen_loss_mask, axis=-1)
             ref_chosen_mean = ref_chosen_sum / policy_chosen_lengths
             
-            ref_rejected_sum = jnp.sum(reference_rejected_logps * rejected_mask, axis=-1)
+            ref_rejected_sum = jnp.sum(reference_rejected_logps * rejected_loss_mask, axis=-1)
             ref_rejected_mean = ref_rejected_sum / policy_rejected_lengths
             
             # 计算策略优势（标准DPO公式）
@@ -566,14 +564,13 @@ class DPOTrainer:
         batch_size, seq_len = targets.shape
     
         try:
-            # 1. 确保输入包含所有必需字段
             complete_inputs = dict(inputs)
             if 'epoch' not in complete_inputs:
                 complete_inputs['epoch'] = jnp.ones((batch_size,), dtype=jnp.int32)
             if 'loss_mask' not in complete_inputs:
                 complete_inputs['loss_mask'] = jnp.ones((batch_size, seq_len), dtype=jnp.bool_)
     
-            # 2. 构建variables字典
+            # 构建variables字典
             params = tstate.params
             if not isinstance(params, FrozenDict):
                 params = FrozenDict(params)
@@ -585,12 +582,11 @@ class DPOTrainer:
             if not hasattr(self, 'model_states'):
                 self.model_states = {}
             
-            # 3. 动态初始化状态
+            # 动态初始化状态
             if state_key not in self.model_states:
                 if self.global_step % 50 == 0:
                     print(f"为 {state_key} 初始化模型状态...")
                 
-                # 临时调整配置
                 original_batch_size = self.task_config.batch_size
                 original_seq_length = self.task_config.sequence_length
                 
@@ -598,24 +594,22 @@ class DPOTrainer:
                     self.task_config.batch_size = batch_size
                     self.task_config.sequence_length = seq_len
                     
-                    # 重新初始化状态
                     init_rng = jax.random.PRNGKey(42)
                     init_rngs = {'params': init_rng, 'dropout': init_rng}
                     init_variables = self.model.init(init_rngs, complete_inputs)
                     
-                    # 保存状态
+                    # 保存
                     self.model_states[state_key] = {k: v for k, v in init_variables.items() if k != 'params'}
                     
                 finally:
-                    # 恢复配置
                     self.task_config.batch_size = original_batch_size
                     self.task_config.sequence_length = original_seq_length
             
-            # 4. 添加状态到variables
+            # 添加状态到variables
             if state_key in self.model_states:
                 variables.update(self.model_states[state_key])
             
-            # 5. 关键修改：允许状态更新
+            # 允许状态更新
             result = self.model.apply(
                 variables,
                 complete_inputs,
@@ -624,7 +618,7 @@ class DPOTrainer:
                 mutable=['state']  # 允许更新state集合
             )
             
-            # 6. 处理返回结果
+            # 处理返回结果
             if isinstance(result, tuple):
                 logits, updated_variables = result
                 # 更新状态
@@ -633,10 +627,10 @@ class DPOTrainer:
             else:
                 logits = result
     
-            # 7. 计算log_softmax
+            # 计算log_softmax
             log_probs = jax.nn.log_softmax(logits, axis=-1)
     
-            # 8. 获取目标token的log_probs
+            # 获取目标token的log_probs
             batch_indices = jnp.arange(batch_size)[:, None]
             seq_indices = jnp.arange(seq_len)[None, :]
             valid_targets = jnp.clip(targets, 0, logits.shape[-1] - 1)
@@ -910,9 +904,8 @@ class DPOTrainer:
             traceback.print_exc()
             raise
         
-    
-    def _prepare_batch(self, examples: List[Dict]) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray]]:
-        \"\"\"准备批次数据\"\"\"
+    def _prepare_batch(self, examples: List[Dict]) -> Tuple[Tuple[Dict, jnp.ndarray, jnp.ndarray], Tuple[Dict, jnp.ndarray, jnp.ndarray]]:
+        \"\"\"准备批次数据，并为completion-only损失计算创建掩码\"\"\"
         if not examples:
             raise ValueError("批次数据为空")
                     
@@ -920,73 +913,87 @@ class DPOTrainer:
         batch_data = {
             'chosen_inputs': [],
             'chosen_targets': [],
+            'chosen_loss_mask': [],
             'rejected_inputs': [],
-            'rejected_targets': []
+            'rejected_targets': [],
+            'rejected_loss_mask': [],
         }
         
         for i, ex in enumerate(examples):
-            # logger.info(f"处理样本 {i+1}/{len(examples)}")
             prompt = ex['prompt']
             chosen_text = ex['chosen']
             rejected_text = ex['rejected']
+            
+            prompt_tokens = self.vocab.encode(prompt)
+            prompt_len = len(prompt_tokens)
 
-            chosen_full = prompt + " " + chosen_text
-            rejected_full = prompt + " " + rejected_text
-              
-            chosen_tokens = self.vocab.encode(chosen_full)[:self.max_seq_length]
+            # --- 处理 chosen ---
+            chosen_completion_tokens = self.vocab.encode(chosen_text)
+            chosen_full_tokens = (prompt_tokens + chosen_completion_tokens)[:self.max_seq_length]
             
             chosen_inputs = np.zeros(self.max_seq_length, dtype=np.int32)
-            chosen_inputs[:len(chosen_tokens)] = chosen_tokens
+            chosen_inputs[:len(chosen_full_tokens)] = chosen_full_tokens
             
             chosen_targets = np.zeros(self.max_seq_length, dtype=np.int32)
-            if len(chosen_tokens) > 0:
-                chosen_targets[:len(chosen_tokens)-1] = chosen_tokens[1:]
-                chosen_targets[len(chosen_tokens)-1] = self.vocab.sp.PieceToId('<eos>')
-            
-            rejected_tokens = self.vocab.encode(rejected_full)[:self.max_seq_length]
-            # logger.info(f"rejected_tokens长度: {len(rejected_tokens)}")
-            
+            if len(chosen_full_tokens) > 0:
+                chosen_targets[:len(chosen_full_tokens)-1] = chosen_full_tokens[1:]
+                chosen_targets[len(chosen_full_tokens)-1] = self.vocab.sp.PieceToId('<eos>')
+
+            # 创建损失掩码 (只在 completion 部分计算损失)
+            chosen_loss_mask = np.zeros(self.max_seq_length, dtype=np.float32)
+            # 损失从 prompt 的最后一个 token 开始计算，因为它预测的是 completion 的第一个 token
+            start_index = prompt_len - 1
+            end_index = len(chosen_full_tokens) - 1
+            if start_index < end_index:
+                chosen_loss_mask[start_index:end_index] = 1.0
+
+            # --- 处理 rejected ---
+            rejected_completion_tokens = self.vocab.encode(rejected_text)
+            rejected_full_tokens = (prompt_tokens + rejected_completion_tokens)[:self.max_seq_length]
+
             rejected_inputs = np.zeros(self.max_seq_length, dtype=np.int32)
-            rejected_inputs[:len(rejected_tokens)] = rejected_tokens
+            rejected_inputs[:len(rejected_full_tokens)] = rejected_full_tokens
             
             rejected_targets = np.zeros(self.max_seq_length, dtype=np.int32)
-            if len(rejected_tokens) > 0:
-                rejected_targets[:len(rejected_tokens)-1] = rejected_tokens[1:]
-                rejected_targets[len(rejected_tokens)-1] = self.vocab.sp.PieceToId('<eos>')
+            if len(rejected_full_tokens) > 0:
+                rejected_targets[:len(rejected_full_tokens)-1] = rejected_full_tokens[1:]
+                rejected_targets[len(rejected_full_tokens)-1] = self.vocab.sp.PieceToId('<eos>')
+
+            # 为 rejected 创建损失掩码
+            rejected_loss_mask = np.zeros(self.max_seq_length, dtype=np.float32)
+            end_index_rej = len(rejected_full_tokens) - 1
+            if start_index < end_index_rej:
+                rejected_loss_mask[start_index:end_index_rej] = 1.0
             
             batch_data['chosen_inputs'].append(chosen_inputs)
             batch_data['chosen_targets'].append(chosen_targets)
+            batch_data['chosen_loss_mask'].append(chosen_loss_mask)
             batch_data['rejected_inputs'].append(rejected_inputs)
             batch_data['rejected_targets'].append(rejected_targets)
+            batch_data['rejected_loss_mask'].append(rejected_loss_mask)
         
         chosen_inputs = jnp.array(batch_data['chosen_inputs'], dtype=jnp.int32)
         chosen_targets = jnp.array(batch_data['chosen_targets'], dtype=jnp.int32)
+        chosen_loss_mask = jnp.array(batch_data['chosen_loss_mask'], dtype=jnp.float32)
         rejected_inputs = jnp.array(batch_data['rejected_inputs'], dtype=jnp.int32)
         rejected_targets = jnp.array(batch_data['rejected_targets'], dtype=jnp.int32)
-        
-        # logger.info(f"chosen_inputs shape: {chosen_inputs.shape}")
-        # logger.info(f"chosen_targets shape: {chosen_targets.shape}")
-        # logger.info(f"rejected_inputs shape: {rejected_inputs.shape}")
-        # logger.info(f"rejected_targets shape: {rejected_targets.shape}")
+        rejected_loss_mask = jnp.array(batch_data['rejected_loss_mask'], dtype=jnp.float32)
         
         # 确保批次维度正确
         if len(chosen_inputs.shape) != 2 or len(chosen_targets.shape) != 2:
             raise ValueError(f"批次维度错误: chosen_inputs shape={chosen_inputs.shape}, chosen_targets shape={chosen_targets.shape}")
         
-        # logger.info(f"chosen_inputs非零元素数量: {jnp.count_nonzero(chosen_inputs)}")
-        # logger.info(f"chosen_targets非零元素数量: {jnp.count_nonzero(chosen_targets)}")
-        # logger.info(f"rejected_inputs非零元素数量: {jnp.count_nonzero(rejected_inputs)}")
-        # logger.info(f"rejected_targets非零元素数量: {jnp.count_nonzero(rejected_targets)}")
-        
         chosen_inputs_dict = {
-        "targets": chosen_inputs,
-        "start_of_sequence": jnp.ones((chosen_inputs.shape[0],), dtype=jnp.bool_)
+            "targets": chosen_inputs,
+            "start_of_sequence": jnp.ones((chosen_inputs.shape[0],), dtype=jnp.bool_)
         }
         rejected_inputs_dict = {
             "targets": rejected_inputs,
             "start_of_sequence": jnp.ones((rejected_inputs.shape[0],), dtype=jnp.bool_)
         }
-        return (chosen_inputs_dict, chosen_targets), (rejected_inputs_dict, rejected_targets)
+        
+        return (chosen_inputs_dict, chosen_targets, chosen_loss_mask), (rejected_inputs_dict, rejected_targets, rejected_loss_mask)
+    
     
     def train(self, train_data: List[Dict], output_dir: str = None) -> str:
         \"\"\"训练主循环\"\"\"
