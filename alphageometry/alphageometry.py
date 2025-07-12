@@ -220,8 +220,8 @@ def get_lm(ckpt_init: str, vocab_path: str) -> lm.LanguageModelInference:
     )
 
     if ckpt_init and ckpt_init.endswith('.pkl'):
-        logging.info("检测到 .pkl 参数文件: %s", ckpt_path)
-        with open(ckpt_path, 'rb') as f:
+        logging.info("检测到 .pkl 参数文件: %s", ckpt_init)
+        with open(ckpt_init, 'rb') as f:
             dpo_params = pickle.load(f)
 
         model_inference = lm.LanguageModelInference(
