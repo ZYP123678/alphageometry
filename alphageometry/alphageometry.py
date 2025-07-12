@@ -218,11 +218,22 @@ def get_lm(ckpt_init: str, vocab_path: str) -> lm.LanguageModelInference:
     lm.parse_gin_configuration(
         _GIN_FILE.value, _GIN_PARAM.value, gin_paths=_GIN_SEARCH_PATHS.value
     )
-    if ckpt_init.endswith('.pkl'):
-        with open(ckpt_init, 'rb') as f:
-            params = pickle.load(f)
-        return lm.LanguageModelInference(vocab_path, params, mode='beam_search', from_params=True)
+
+    if ckpt_init and ckpt_init.endswith('.pkl'):
+        logging.info("检测到 .pkl 参数文件: %s", ckpt_path)
+        with open(ckpt_path, 'rb') as f:
+            dpo_params = pickle.load(f)
+
+        model_inference = lm.LanguageModelInference(
+            vocab_path=vocab_path,
+            load_dir_or_params=dpo_params,
+            mode='beam_search',
+            from_params=True 
+        )
+        logging.info('加载 pkl 格式成功')
+        return model_inference
     else:
+        logging.info('加载 ckpt_init 格式')
         return lm.LanguageModelInference(vocab_path, ckpt_init, mode='beam_search')
 
 

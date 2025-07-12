@@ -20,7 +20,9 @@ import jax
 import models  # pylint: disable=unused-import
 import t5.data
 from transformer import inference_utils
-
+from absl import logging
+from flax.core import FrozenDict
+import numpy
 
 np = jax.numpy
 
@@ -41,6 +43,9 @@ class LanguageModelInference:
 
     if from_params:
       # 先正常初始化
+      logging.info('================== 加载 PKL 格式参数 (from_params=True) ==================')
+
+      # 1. 初始化一个不加载任何权重的 "空壳" Trainer，以获取模型结构和干净的状态
       def null_iter_fn() -> None:
         return None
 
@@ -53,7 +58,7 @@ class LanguageModelInference:
           get_test_dataset_iterator=None,
           pretty_print_input_function=None,
           process_summaries_function=process_summaries_f,
-          load_dir=None,  # 不加载原始checkpoint
+          load_dir=None,
           workdir='',
           replicate_mode=False,
       )
@@ -68,61 +73,68 @@ class LanguageModelInference:
       self.task = trainer.create_training_task(mode, imodel, prngs, writers)
       inference_utils.training_loop.clear_interstep_callbacks()
       inference_utils.training_loop.register_interstep_callbacks()
-            # 临时补齐 embedding 以适配目标 shape
-            # 临时补齐 embedding 以适配目标 shape
+      
+      # 2. 定义辅助函数，用于处理嵌套字典和参数填充
       def pad_embedding(embedding, target_shape):
-          import numpy as np
-          if hasattr(embedding, "shape"):
-              emb_shape = embedding.shape
-          else:
-              emb_shape = np.array(embedding).shape
+          """根据目标形状，填充或截断给定的 embedding 数组。"""
+          # 使用原始 numpy 进行形状检查和操作
+          if not isinstance(embedding, numpy.ndarray):
+              embedding = numpy.array(embedding)
+          emb_shape = embedding.shape
+          
+          logging.info(f"Embedding shape: {emb_shape}, target shape: {target_shape}")
           if emb_shape == target_shape:
               return embedding
+          elif len(emb_shape) != 2 or len(target_shape) != 2:
+              logging.error(f"Embedding 维度不匹配，无法填充。源: {emb_shape}, 目标: {target_shape}")
+              raise ValueError("Embedding 必须是二维的才能填充。")
           elif emb_shape[0] < target_shape[0]:
+              # 补齐到目标大小
               pad_width = ((0, target_shape[0] - emb_shape[0]), (0, 0))
-              return np.pad(embedding, pad_width, mode='constant')
+              padded = numpy.pad(embedding, pad_width, mode='constant', constant_values=0)
+              logging.info(f"Padded embedding from {emb_shape} to {padded.shape}")
+              return padded
           else:
-              return embedding[:target_shape[0], :]
+              # 截取到目标大小
+              truncated = embedding[:target_shape[0], :]
+              logging.info(f"Truncated embedding from {emb_shape} to {truncated.shape}")
+              return truncated
 
-      # 递归将 FrozenDict 转为普通 dict
       def recursive_to_dict(d):
-          if hasattr(d, "items"):
+          """递归地将 Flax FrozenDict 转换为 Python 普通字典。"""
+          if isinstance(d, (dict, FrozenDict)):
               return {k: recursive_to_dict(v) for k, v in d.items()}
-          else:
-              return d
+          return d
 
-      # 递归将 dict 转为 FrozenDict
-      from flax.core import FrozenDict
       def recursive_to_frozendict(d):
+          """递归地将 Python 普通字典转换为 Flax FrozenDict。"""
           if isinstance(d, dict):
               return FrozenDict({k: recursive_to_frozendict(v) for k, v in d.items()})
-          else:
-              return d
+          return d
 
-      # 转成可变 dict
+      # 3. 将传入的 DPO 参数转换为可变字典
       params_dict = recursive_to_dict(load_dir_or_params)
 
-      if hasattr(tstate, "params"):
+      # 4. 获取目标 embedding 形状并进行填充
+      try:
           target_shape = tstate.params['decoder']['embed']['embedding'].shape
-          params_dict['decoder']['embed']['embedding'] = pad_embedding(
-              params_dict['decoder']['embed']['embedding'], target_shape)
-          tstate = tstate.replace(params=recursive_to_frozendict(params_dict))
-      elif hasattr(tstate, "optimizer") and hasattr(tstate.optimizer, "target"):
-          target_shape = tstate.optimizer.target['decoder']['embed']['embedding'].shape
-          params_dict['decoder']['embed']['embedding'] = pad_embedding(
-              params_dict['decoder']['embed']['embedding'], target_shape)
-          optimizer = tstate.optimizer.replace(target=recursive_to_frozendict(params_dict))
-          tstate = tstate.replace(optimizer=optimizer)
-      else:
-          raise ValueError(f"无法识别 tstate 的参数结构，字段有：{dir(tstate)}")
-      self.tstate = tstate
+          logging.info(f"从 tstate.params 中获取目标 embedding 形状: {target_shape}")
+          
+          # 检查并填充 embedding
+          if 'decoder' in params_dict and 'embed' in params_dict['decoder'] and 'embedding' in params_dict['decoder']['embed']:
+              params_dict['decoder']['embed']['embedding'] = pad_embedding(
+                  params_dict['decoder']['embed']['embedding'], target_shape)
+          else:
+              logging.warning("在加载的参数中未找到 'decoder.embed.embedding' 路径，跳过填充。")
 
-      eos = [0] * 1024
-      for idx in self.encode_list(['.', ';']):
-        eos[idx] = 1
-      self.eos = np.array(eos, dtype=np.bfloat16)
-      self.mask = jax.numpy.ones([1024], dtype=np.bfloat16)
-      return
+      except KeyError:
+          logging.error("无法在初始化的 tstate.params 中找到 'decoder.embed.embedding'，无法进行形状适配。")
+          raise
+
+      # 5. 将处理过的参数更新回 TrainState
+      #    我们只替换 `params`，保持 `opt_state` 等其他部分是干净的、初始化的状态
+      self.tstate = tstate.replace(params=recursive_to_frozendict(params_dict))
+      logging.info("已成功将 DPO 参数注入到新的 TrainState 中。")
 
     # ====== 原有的 checkpoint 路径加载逻辑 ======
     def null_iter_fn() -> None:
